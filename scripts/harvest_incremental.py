@@ -18,14 +18,16 @@ Usage:
     python scripts/harvest_incremental.py --since 2026-01-01  # Override date
     python scripts/harvest_incremental.py --max-pages 50       # Limit pages per filter
 
-Environment:
-    TURSO_DATABASE_URL   - Turso DB URL (libsql://...)
-    TURSO_AUTH_TOKEN     - Turso auth token
+Authentication:
+    Log in once with `~/.turso/turso auth login`. The scheduled job uses the
+    Turso CLI credential store; it does not read Vercel's encrypted secrets.
 """
 
 import argparse
 import json
 import os
+import shlex
+import subprocess
 import sys
 import time
 import uuid
@@ -340,13 +342,34 @@ def sql_value(val) -> str:
     return "'" + str(val).replace("'", "''") + "'"
 
 
-def upsert_to_turso(rows: list[dict], turso_db: str = "borr-v2") -> tuple[int, int]:
+def check_turso_cli_auth() -> None:
+    """Fail before harvesting when the Turso CLI cannot access the account."""
+    if not TURSO_CLI.exists():
+        raise RuntimeError(f"Turso CLI not found: {TURSO_CLI}")
+
+    result = subprocess.run(
+        [str(TURSO_CLI), "auth", "whoami"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    detail = (result.stderr or result.stdout).strip()
+    if result.returncode != 0 or "not logged in" in detail.lower():
+        raise RuntimeError(
+            "Turso CLI is not authenticated. Run '~/.turso/turso auth login'. "
+            f"Details: {detail[:300]}"
+        )
+
+
+def upsert_to_turso(rows: list[dict], turso_db: str = "borr-v2") -> int:
     """
     Batch upsert papers into Turso using INSERT OR IGNORE.
-    Returns (inserted, skipped).
+    Returns the number of rows submitted successfully. Existing openalex_id
+    values are ignored by SQLite; paper_stats triggers count only real inserts.
     """
     if not rows:
-        return 0, 0
+        return 0
 
     columns = [
         "id", "openalex_id", "title", "authors", "abstract", "doi",
@@ -356,42 +379,55 @@ def upsert_to_turso(rows: list[dict], turso_db: str = "borr-v2") -> tuple[int, i
         "external_ids", "sources", "last_harvested_at",
     ]
 
-    inserted = 0
+    processed = 0
     batch_rows = []
 
-    for row in rows:
-        vals = ", ".join(sql_value(row.get(col)) for col in columns)
-        batch_rows.append(f"({vals})")
-
-        if len(batch_rows) >= BATCH_SIZE:
-            sql = "INSERT OR IGNORE INTO papers (" + ", ".join(columns) + ") VALUES " + ",\n".join(batch_rows) + ";"
-            Path(BATCH_SQL_FILE).write_text(sql)
-
-            result = os.system(f"{TURSO_CLI} db shell {turso_db} < {BATCH_SQL_FILE} 2>/dev/null")
-            if result == 0:
-                inserted += len(batch_rows)
-            else:
-                log(f"  WARNING: Turso shell returned exit code {result}")
-
-            batch_rows = []
-
-    # Remaining batch
-    if batch_rows:
-        sql = "INSERT OR IGNORE INTO papers (" + ", ".join(columns) + ") VALUES " + ",\n".join(batch_rows) + ";"
+    def run_batch(values: list[str]) -> None:
+        nonlocal processed
+        sql = (
+            "INSERT OR IGNORE INTO papers ("
+            + ", ".join(columns)
+            + ") VALUES "
+            + ",\n".join(values)
+            + ";"
+        )
         Path(BATCH_SQL_FILE).write_text(sql)
+        command = (
+            f"{shlex.quote(str(TURSO_CLI))} db shell {shlex.quote(turso_db)} "
+            f"< {shlex.quote(BATCH_SQL_FILE)}"
+        )
+        result = subprocess.run(
+            ["sh", "-c", command],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=False,
+        )
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout).strip()
+            raise RuntimeError(
+                f"Turso batch write failed (exit {result.returncode}): {detail[:500]}"
+            )
+        processed += len(values)
 
-        result = os.system(f"{TURSO_CLI} db shell {turso_db} < {BATCH_SQL_FILE} 2>/dev/null")
-        if result == 0:
-            inserted += len(batch_rows)
-        else:
-            log(f"  WARNING: Final batch returned exit code {result}")
+    try:
+        for row in rows:
+            vals = ", ".join(sql_value(row.get(col)) for col in columns)
+            batch_rows.append(f"({vals})")
 
-    # Cleanup
-    if Path(BATCH_SQL_FILE).exists():
-        Path(BATCH_SQL_FILE).unlink()
+            if len(batch_rows) >= BATCH_SIZE:
+                run_batch(batch_rows)
+                batch_rows = []
 
-    skipped = len(rows) - inserted
-    return inserted, skipped
+        # Remaining batch
+        if batch_rows:
+            run_batch(batch_rows)
+    finally:
+        # Never leave harvested metadata in a predictable temporary SQL file.
+        if Path(BATCH_SQL_FILE).exists():
+            Path(BATCH_SQL_FILE).unlink()
+
+    return processed
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────
@@ -410,6 +446,9 @@ def main():
                         help="Turso database name (default: borr-v2)")
     args = parser.parse_args()
 
+    if not args.dry_run:
+        check_turso_cli_auth()
+
     # Determine harvest start date
     if args.since:
         since = date.fromisoformat(args.since)
@@ -425,7 +464,6 @@ def main():
         log(f"This may pull a large number of papers.")
         log(f"Consider using --since to limit the window.")
 
-    log(f"Fetching papers published since: {since}")
     log(f"Fetching papers published since: {since}")
 
     # ── Fetch from both filters ──
@@ -505,14 +543,14 @@ def main():
     log("═" * 60)
     log(f"UPSERTING {len(rows):,} papers into Turso ({args.turso_db})...")
 
-    inserted, skipped = upsert_to_turso(rows, args.turso_db)
+    processed = upsert_to_turso(rows, args.turso_db)
 
     log("")
     log("═" * 60)
     log("RESULTS:")
-    log(f"  Inserted: {inserted:,}")
-    log(f"  Skipped (already present): {skipped:,}")
-    log(f"  Total processed: {len(rows):,}")
+    log(f"  Successfully submitted: {processed:,}")
+    log("  Existing OpenAlex IDs were ignored automatically")
+    log(f"  Total harvested: {len(rows):,}")
 
     # ── Save checkpoint ──
     save_checkpoint(date.today())

@@ -16,6 +16,8 @@ class ReadQuotaGuardTests(unittest.TestCase):
         middleware = (ROOT / "proxy.ts").read_text()
         paper_page = (ROOT / "app" / "paper" / "[doi]" / "page.tsx").read_text()
         paper_card = (ROOT / "components" / "PaperCard.tsx").read_text()
+        home_page = (ROOT / "app" / "page.tsx").read_text()
+        harvester = (ROOT / "scripts" / "harvest_incremental.py").read_text()
 
         self.assertIn("const MAX_FTS_CANDIDATES = 128", data_source)
         self.assertIn("let ftsCandidateRowids: number[] | null = null", data_source)
@@ -25,6 +27,11 @@ class ReadQuotaGuardTests(unittest.TestCase):
         self.assertNotIn("export async function generateMetadata", paper_page)
         self.assertIn("<Link prefetch={false} href={paperHref}", paper_card)
         self.assertNotIn("href={`/search?field=", paper_card)
+        self.assertIn("getLocalPaperCount", home_page)
+        self.assertIn("Updated automatically after each database harvest", home_page)
+        self.assertNotIn('href="/search?type=', home_page)
+        self.assertIn("check_turso_cli_auth()", harvester)
+        self.assertNotIn("2>/dev/null", harvester)
 
     def test_schema_and_migration_are_valid(self) -> None:
         con = sqlite3.connect(":memory:")

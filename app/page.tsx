@@ -1,20 +1,21 @@
 import Link from "next/link";
 import { Search } from "lucide-react";
-import { isTursoDatabaseConfigured, getLocalTypeCounts } from "@/lib/turso-papers";
+import { getLocalPaperCount, isTursoDatabaseConfigured } from "@/lib/turso-papers";
 
-// Aggregate stats change only after a harvest; cache the homepage for a day.
-export const revalidate = 86400;
+// The monthly harvest updates paper_stats through database triggers. Refresh the
+// homepage hourly so the displayed corpus size follows the database automatically.
+export const revalidate = 3600;
 
 export default async function Home() {
-  let typeCounts: Record<string, number> = {};
+  let paperCount = 0;
   if (isTursoDatabaseConfigured) {
     try {
-      typeCounts = await getLocalTypeCounts();
+      paperCount = await getLocalPaperCount();
     } catch {
-      // DB unreachable; cards render zeros rather than failing the page.
+      // DB unreachable; the count renders zero rather than failing the page.
     }
   }
-  const fmt = (n: number | undefined) => (n ?? 0).toLocaleString();
+  const formattedPaperCount = paperCount.toLocaleString();
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -53,27 +54,14 @@ export default async function Home() {
 
       <section className="py-16 bg-white dark:bg-gray-950 border-b border-gray-100 dark:border-gray-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
-            <Link prefetch={false} href="/search?type=Journal+Article" className="block p-6 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md hover:border-borr-blue/40 transition-all">
-              <h3 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">{fmt(typeCounts["Journal Article"])}</h3>
-              <p className="text-gray-600 dark:text-gray-400 font-medium text-sm">Articles</p>
-            </Link>
-            <Link prefetch={false} href="/search?type=Book+Chapter" className="block p-6 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md hover:border-borr-blue/40 transition-all">
-              <h3 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">{fmt(typeCounts["Book Chapter"])}</h3>
-              <p className="text-gray-600 dark:text-gray-400 font-medium text-sm">Book Chapters</p>
-            </Link>
-            <Link prefetch={false} href="/search?type=Review" className="block p-6 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md hover:border-borr-blue/40 transition-all">
-              <h3 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">{fmt(typeCounts["Review"])}</h3>
-              <p className="text-gray-600 dark:text-gray-400 font-medium text-sm">Reviews</p>
-            </Link>
-            <Link prefetch={false} href="/search?type=Thesis" className="block p-6 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md hover:border-borr-blue/40 transition-all">
-              <h3 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">{fmt(typeCounts["Thesis"])}</h3>
-              <p className="text-gray-600 dark:text-gray-400 font-medium text-sm">Dissertations</p>
-            </Link>
-            <Link prefetch={false} href="/search?type=Other" className="block col-span-2 md:col-span-1 p-6 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md hover:border-borr-blue/40 transition-all">
-              <h3 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">{fmt(typeCounts["Other"])}</h3>
-              <p className="text-gray-600 dark:text-gray-400 font-medium text-sm">Other</p>
-            </Link>
+          <div className="flex justify-center text-center">
+            <div className="w-full max-w-md p-8 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm">
+              <h3 className="text-4xl md:text-5xl font-bold text-gray-900 dark:text-gray-100 mb-2" aria-live="polite">
+                {formattedPaperCount}
+              </h3>
+              <p className="text-gray-600 dark:text-gray-400 font-medium">Research papers in BORR</p>
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-500">Updated automatically after each database harvest</p>
+            </div>
           </div>
         </div>
       </section>
