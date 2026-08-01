@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+venv/
+.venv/
+
+# Next.js
+.next/
+out/
+
+# Database files - these are on Turso
+*.db
+*.db-shm
+*.db-wal
+/data/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Logs
+*.log
+*.pid
+output.html
+dev.log
+migration.log
+migration.pid
+
+# Env/Secrets
+.env
+.env.local
+.env*.local
+
+# OS/Editor
+.DS_Store
+.vscode/
+.idea/
+
+# Config
+.claude/
+.github/workflows/
+
+# Build artifacts
+tsconfig.tsbuildinfo

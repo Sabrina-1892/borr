@@ -50,3 +50,5 @@ output.html
 
 # GitHub workflows (token scope limitation)
 .github/workflows/
+.vercel
+.env*

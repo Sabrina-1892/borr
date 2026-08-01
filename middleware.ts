@@ -7,6 +7,7 @@ const WINDOW_MS = 60_000;
 
 function clientIp(request: NextRequest): string {
   return (
+    request.ip ||
     request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
     request.headers.get("x-real-ip") ||
     "unknown"

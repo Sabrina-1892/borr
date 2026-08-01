@@ -21,18 +21,13 @@ async function main() {
   const total = Number(totalResult.rows[0].n);
   console.log(`Local verified papers: ${total.toLocaleString()}`);
 
-  if (process.stdin.isTTY) {
-    const rl = createInterface({ input: process.stdin, output: process.stdout });
-    const proceed = await new Promise((resolve) => rl.question("Continue? (y/N) ", resolve));
-    rl.close();
-    if (proceed.toLowerCase() !== "y") { console.log("Aborted."); process.exit(0); }
-  }
+  console.log(`Auto-continuing...`);
 
   // Open remote Turso DB
   const remote = createClient({ url: TURSO_URL, authToken: TURSO_TOKEN });
 
   console.log("Migrating data in batches...");
-  const BATCH = 10000;
+  const BATCH = 500;
 
   // Resume from where we left off
   const remoteMax = await remote.execute("SELECT COALESCE(MAX(rowid), 0) AS n FROM papers");

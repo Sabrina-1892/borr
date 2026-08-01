@@ -29,10 +29,12 @@ CREATE TABLE IF NOT EXISTS papers (
 );
 
 -- Indexes
-CREATE INDEX IF NOT EXISTS papers_verified_year_idx ON papers (verified, year DESC);
-CREATE INDEX IF NOT EXISTS papers_verified_citations_idx ON papers (verified, citation_count DESC);
+CREATE INDEX IF NOT EXISTS papers_verified_year_idx ON papers (verified, year DESC, id ASC);
+CREATE INDEX IF NOT EXISTS papers_verified_citations_idx ON papers (verified, citation_count DESC, id ASC);
 CREATE INDEX IF NOT EXISTS papers_doi_lower_idx ON papers (lower(doi)) WHERE doi IS NOT NULL;
+CREATE INDEX IF NOT EXISTS papers_verified_paper_type_idx ON papers (verified, paper_type, id ASC);
 CREATE INDEX IF NOT EXISTS papers_openalex_short_idx ON papers (replace(openalex_id, 'https://openalex.org/', '')) WHERE openalex_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS papers_verified_id_idx ON papers (verified, id ASC);
 
 -- Create FTS Virtual Table
 CREATE VIRTUAL TABLE IF NOT EXISTS papers_fts USING fts5(

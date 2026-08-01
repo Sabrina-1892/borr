@@ -256,10 +256,10 @@ async function searchLocalPapersUncached(options: SearchPapersOptions): Promise<
   const offset = (Math.max(options.page, 1) - 1) * limit;
   const fetchLimit = limit + 1;
 
-  let orderBy = "p.citation_count DESC, p.id ASC";
+  let orderBy = "p.citation_count DESC";
 
   if (options.sort === "newest") {
-    orderBy = "p.year DESC, p.id ASC";
+    orderBy = "p.year DESC";
   } else if (options.sort === "relevance" && options.query) {
     orderBy = "CASE WHEN p.title LIKE ? THEN 100 ELSE 0 END + p.citation_count DESC, p.year DESC";
     params.push(`%${options.query}%`);
@@ -433,7 +433,7 @@ export async function getLocalPaperSitemapPage(
 ): Promise<{ id: string; updated_at: string | null }[]> {
   const db = getClient();
   const result = await db.execute({
-    sql: `SELECT id, updated_at FROM papers WHERE verified = 1 ORDER BY id LIMIT ? OFFSET ?`,
+    sql: `SELECT id, updated_at FROM papers WHERE verified = 1 ORDER BY citation_count DESC LIMIT ? OFFSET ?`,
     args: [limit, offset],
   });
   

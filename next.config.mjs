@@ -33,11 +33,21 @@ const securityHeaders = [
 
 const nextConfig = {
   poweredByHeader: false,
+  compress: true,
+  experimental: {
+    optimizePackageImports: ["lucide-react"],
+  },
   async headers() {
     return [
       {
         source: "/(.*)",
         headers: securityHeaders,
+      },
+      {
+        source: "/search",
+        headers: [
+          { key: "Cache-Control", value: "public, s-maxage=60, stale-while-revalidate=300" },
+        ],
       },
     ];
   },

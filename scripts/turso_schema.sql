@@ -31,5 +31,6 @@ CREATE TABLE IF NOT EXISTS papers (
 CREATE INDEX IF NOT EXISTS papers_verified_year_idx ON papers (verified, year DESC);
 CREATE INDEX IF NOT EXISTS papers_verified_citations_idx ON papers (verified, citation_count DESC);
 CREATE INDEX IF NOT EXISTS papers_doi_lower_idx ON papers (lower(doi)) WHERE doi IS NOT NULL;
+CREATE INDEX IF NOT EXISTS papers_verified_paper_type_idx ON papers (verified, paper_type);
 CREATE INDEX IF NOT EXISTS papers_openalex_short_idx ON papers (replace(openalex_id, 'https://openalex.org/', '')) WHERE openalex_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS papers_search_text_idx ON papers (search_text);
