@@ -17,6 +17,7 @@ export default function AuthorList({ authors, limit = 4 }: { authors: string[]; 
         <span key={`${author}-${i}`}>
           <Link
             href={`/search?q=${encodeURIComponent(`"${author}"`)}`}
+            prefetch={false}
             className="text-borr-blue hover:underline"
           >
             {author}

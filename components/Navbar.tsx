@@ -42,6 +42,7 @@ export default function Navbar() {
               <Link
                 key={href}
                 href={href}
+                prefetch={href === "/search" ? false : undefined}
                 aria-current={pathname === href ? "page" : undefined}
                 className={linkClasses(href, "transition-colors flex items-center gap-1 text-sm font-medium")}
               >
@@ -75,6 +76,7 @@ export default function Navbar() {
               <Link
                 key={href}
                 href={href}
+                prefetch={href === "/search" ? false : undefined}
                 onClick={() => setMobileOpen(false)}
                 aria-current={pathname === href ? "page" : undefined}
                 className={linkClasses(href, "block py-2 text-sm font-medium")}

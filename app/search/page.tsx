@@ -6,11 +6,17 @@ import { TOP_FIELDS } from "@/lib/fields";
 
 // Rendered per-request (reads searchParams), but NOT force-dynamic: that emitted
 // `no-store` and defeated the CDN cache configured in vercel.json. Without it, the
-// edge caches each search URL (s-maxage=60), so repeat/crawler hits to the same
+// edge caches each search URL (s-maxage=600), so repeat/crawler hits to the same
 // query are served from the CDN instead of re-scanning Turso.
-export const revalidate = 60;
+export const revalidate = 600;
 
-const PAPER_SELECT = "id, title, authors, abstract, doi, url, journal, year, fields, access_type, citation_count, paper_type, verified, created_at";
+const PAPER_TYPES = new Set(["Journal Article", "Review", "Conference", "Preprint", "Thesis", "Book Chapter", "Other"]);
+const SORTS = new Set(["relevance", "newest", "cited"]);
+const TOP_FIELDS_SET = new Set<string>(TOP_FIELDS);
+
+function cleanParam(value: string | undefined, maxLength: number): string {
+  return (value || "").normalize("NFKC").trim().slice(0, maxLength);
+}
 
 export default async function SearchPage({
   searchParams,
@@ -29,20 +35,23 @@ export default async function SearchPage({
   }>;
 }) {
   const resolvedSearchParams = await searchParams;
-  const query = (resolvedSearchParams.q || "").trim();
+  const query = cleanParam(resolvedSearchParams.q, 120);
   const defaultSort = query ? "relevance" : "cited";
-  const sort = resolvedSearchParams.sort || defaultSort;
+  const requestedSort = cleanParam(resolvedSearchParams.sort, 16);
+  const sort = SORTS.has(requestedSort) ? requestedSort : defaultSort;
   const requestedPage = Math.max(parseInt(resolvedSearchParams.page || "1", 10) || 1, 1);
   const page = Math.min(requestedPage, 20);
-  const filterField = resolvedSearchParams.field || "";
-  const filterYear = resolvedSearchParams.year || "";
-  const filterYearFrom = resolvedSearchParams.yearFrom || "";
-  const filterYearTo = resolvedSearchParams.yearTo || "";
-  const filterType = resolvedSearchParams.type || "";
-  const filterAccess = resolvedSearchParams.access || "";
-  const filterInstitution = resolvedSearchParams.institution || "";
+  const requestedField = cleanParam(resolvedSearchParams.field, 80);
+  const filterField = TOP_FIELDS_SET.has(requestedField) ? requestedField : "";
+  const filterYear = cleanParam(resolvedSearchParams.year, 4);
+  const filterYearFrom = cleanParam(resolvedSearchParams.yearFrom, 4);
+  const filterYearTo = cleanParam(resolvedSearchParams.yearTo, 4);
+  const requestedType = cleanParam(resolvedSearchParams.type, 32);
+  const filterType = PAPER_TYPES.has(requestedType) ? requestedType : "";
+  const requestedAccess = cleanParam(resolvedSearchParams.access, 24);
+  const filterAccess = requestedAccess === "Open Access" ? requestedAccess : "";
+  const filterInstitution = cleanParam(resolvedSearchParams.institution, 100);
   const limit = 15;  // reduced from 20 — faster page loads
-  const offset = (page - 1) * limit;
 
   let papers: LocalPaperRow[] | null = [];
   let count: number | null = 0;
@@ -51,8 +60,16 @@ export default async function SearchPage({
   let error: { message: string } | null = null;
   const hasAnyFilter = Boolean(filterField || filterYear || filterYearFrom || filterYearTo || filterType || filterAccess || filterInstitution);
   const searchEnabled = process.env.BORR_SEARCH_ENABLED === "1";
-  // Allow empty queries (for browsing/filtering) or text queries >= 2 characters
-  const canQueryDatabase = searchEnabled && (query === "" || query.length >= 2);
+  const queryIsValid = query.length >= 2;
+  const queryIsTooShort = query.length > 0 && !queryIsValid;
+  // json_each(fields) and %LIKE% affiliation filters are not indexable. They are
+  // allowed only after FTS has reduced the candidate set to a hard maximum.
+  const filterNeedsTextQuery = Boolean(filterField || filterInstitution) && !queryIsValid;
+  const hasSafeStandaloneFilter = Boolean(filterYear || filterYearFrom || filterYearTo || filterType || filterAccess);
+  const hasSearchIntent = queryIsValid || hasSafeStandaloneFilter;
+  // A naked /search page is UI-only. It must never browse/query Turso merely
+  // because Next.js, a browser, or a crawler requested the route.
+  const canQueryDatabase = searchEnabled && hasSearchIntent && !queryIsTooShort && !filterNeedsTextQuery;
 
   if (isTursoDatabaseConfigured && canQueryDatabase) {
     try {
@@ -238,8 +255,14 @@ export default async function SearchPage({
 
         {error ? (
           <div className="bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300 p-4 rounded-md border border-red-200 dark:border-red-900"><p>Error loading results: {error.message}</p></div>
-        ) : !canQueryDatabase ? (
+        ) : !searchEnabled ? (
           <div className="text-center py-16 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800"><SearchIcon className="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600 mb-4" /><h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-1">Search temporarily protected</h3><p className="text-gray-500 dark:text-gray-400">BORR public search is paused while database-read quota recovers. This prevents crawler traffic from consuming more Turso reads. Set BORR_SEARCH_ENABLED=1 in production when you are ready to re-enable it.</p>{(query || hasAnyFilter) && <p className="text-xs text-gray-400 dark:text-gray-500 mt-3">No database query was run for this request.</p>}</div>
+        ) : queryIsTooShort ? (
+          <div className="text-center py-16 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800"><SearchIcon className="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600 mb-4" /><h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-1">Enter at least 2 characters</h3><p className="text-gray-500 dark:text-gray-400">No database query was run.</p></div>
+        ) : filterNeedsTextQuery ? (
+          <div className="text-center py-16 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800"><SearchIcon className="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600 mb-4" /><h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-1">Add a search keyword</h3><p className="text-gray-500 dark:text-gray-400">Field and affiliation filters require a keyword so BORR can search a bounded candidate set. No database query was run.</p></div>
+        ) : !hasSearchIntent ? (
+          <div className="text-center py-16 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800"><SearchIcon className="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600 mb-4" /><h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-1">Search BORR</h3><p className="text-gray-500 dark:text-gray-400">Enter a keyword above to search papers. Opening this page does not query the database.</p></div>
         ) : !papers || papers.length === 0 ? (
           <div className="text-center py-16 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800"><SearchIcon className="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600 mb-4" /><h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-1">No papers found</h3><p className="text-gray-500 dark:text-gray-400">Try adjusting your search terms or filters.</p></div>
         ) : (

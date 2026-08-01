@@ -2,8 +2,8 @@ import Link from "next/link";
 import { Search } from "lucide-react";
 import { isTursoDatabaseConfigured, getLocalTypeCounts } from "@/lib/turso-papers";
 
-// Stats are recomputed at most once an hour.
-export const revalidate = 3600;
+// Aggregate stats change only after a harvest; cache the homepage for a day.
+export const revalidate = 86400;
 
 export default async function Home() {
   let typeCounts: Record<string, number> = {};
@@ -46,7 +46,7 @@ export default async function Home() {
             </div>
           </form>
           <div className="mt-4 text-sm text-gray-400">
-            Try: <Link href="/search?q=climate+change" className="text-borr-blue hover:underline">climate change</Link>, <Link href="/search?q=public+health" className="text-borr-blue hover:underline">public health</Link>, <Link href="/search?q=agriculture" className="text-borr-blue hover:underline">agriculture</Link>
+            Try: <Link prefetch={false} href="/search?q=climate+change" className="text-borr-blue hover:underline">climate change</Link>, <Link prefetch={false} href="/search?q=public+health" className="text-borr-blue hover:underline">public health</Link>, <Link prefetch={false} href="/search?q=agriculture" className="text-borr-blue hover:underline">agriculture</Link>
           </div>
         </div>
       </section>
@@ -54,23 +54,23 @@ export default async function Home() {
       <section className="py-16 bg-white dark:bg-gray-950 border-b border-gray-100 dark:border-gray-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
-            <Link href="/search?type=Journal+Article" className="block p-6 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md hover:border-borr-blue/40 transition-all">
+            <Link prefetch={false} href="/search?type=Journal+Article" className="block p-6 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md hover:border-borr-blue/40 transition-all">
               <h3 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">{fmt(typeCounts["Journal Article"])}</h3>
               <p className="text-gray-600 dark:text-gray-400 font-medium text-sm">Articles</p>
             </Link>
-            <Link href="/search?type=Book+Chapter" className="block p-6 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md hover:border-borr-blue/40 transition-all">
+            <Link prefetch={false} href="/search?type=Book+Chapter" className="block p-6 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md hover:border-borr-blue/40 transition-all">
               <h3 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">{fmt(typeCounts["Book Chapter"])}</h3>
               <p className="text-gray-600 dark:text-gray-400 font-medium text-sm">Book Chapters</p>
             </Link>
-            <Link href="/search?type=Review" className="block p-6 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md hover:border-borr-blue/40 transition-all">
+            <Link prefetch={false} href="/search?type=Review" className="block p-6 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md hover:border-borr-blue/40 transition-all">
               <h3 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">{fmt(typeCounts["Review"])}</h3>
               <p className="text-gray-600 dark:text-gray-400 font-medium text-sm">Reviews</p>
             </Link>
-            <Link href="/search?type=Thesis" className="block p-6 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md hover:border-borr-blue/40 transition-all">
+            <Link prefetch={false} href="/search?type=Thesis" className="block p-6 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md hover:border-borr-blue/40 transition-all">
               <h3 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">{fmt(typeCounts["Thesis"])}</h3>
               <p className="text-gray-600 dark:text-gray-400 font-medium text-sm">Dissertations</p>
             </Link>
-            <Link href="/search?type=Other" className="block col-span-2 md:col-span-1 p-6 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md hover:border-borr-blue/40 transition-all">
+            <Link prefetch={false} href="/search?type=Other" className="block col-span-2 md:col-span-1 p-6 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md hover:border-borr-blue/40 transition-all">
               <h3 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">{fmt(typeCounts["Other"])}</h3>
               <p className="text-gray-600 dark:text-gray-400 font-medium text-sm">Other</p>
             </Link>

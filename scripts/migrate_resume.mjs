@@ -18,7 +18,7 @@ async function batchInsert(remote, statements, batchSize) {
         await remote.batch(chunk, { signal: ctrl.signal });
         inserted += chunk.length;
         break;
-      } catch (e) {
+      } catch {
         if (attempt === 2) {
           if (batchSize > 100) return { inserted, retry: true };
           // skip this chunk on last attempt
@@ -46,7 +46,6 @@ async function main() {
   let batchSize = 2000;
   let currentRowid = lastRowid;
   let inserted = 0;
-  let errors = 0;
   let startTime = Date.now();
 
   while (true) {

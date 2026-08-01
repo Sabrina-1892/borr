@@ -21,7 +21,7 @@ export default function PaperCard({
     <div className="bg-white dark:bg-gray-900 p-6 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md transition-shadow">
       <div className="flex justify-between items-start mb-2">
         <h3 className="text-xl font-bold text-borr-navy dark:text-blue-300 hover:text-borr-blue dark:hover:text-blue-200 transition-colors">
-          <Link href={paperHref}>{highlightText(paper.title, query)}</Link>
+          <Link prefetch={false} href={paperHref}>{highlightText(paper.title, query)}</Link>
         </h3>
         {paper.verified && <span className="flex items-center text-xs text-borr-green dark:text-green-400 bg-green-50 dark:bg-green-950 px-2 py-1 rounded-full font-medium ml-4 shrink-0"><CheckCircle className="w-3 h-3 mr-1" /> Verified</span>}
       </div>
@@ -41,7 +41,7 @@ export default function PaperCard({
       {paper.abstract && <p className="text-gray-700 dark:text-gray-300 text-sm mb-4 line-clamp-3">{highlightText(paper.abstract, query)}</p>}
       <div className="flex justify-between items-center mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
         <div className="flex flex-wrap items-center gap-2">
-          {paper.fields?.slice(0, 3).map((field) => <Link key={field} href={`/search?field=${encodeURIComponent(field)}`} className="text-xs bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 px-2 py-1 rounded-md transition-colors">{field}</Link>)}
+          {paper.fields?.slice(0, 3).map((field) => <span key={field} className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 px-2 py-1 rounded-md">{field}</span>)}
           {paper.access_type === "Open Access" && <span className="text-xs bg-blue-50 dark:bg-blue-950 text-borr-blue dark:text-blue-300 px-2 py-1 rounded-md font-medium">Open Access</span>}
         </div>
         <div className="flex items-center gap-3 shrink-0 ml-4">

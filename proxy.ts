@@ -14,9 +14,24 @@ function clientIp(request: NextRequest): string {
 }
 
 function limitForPath(pathname: string): number {
-  if (pathname.startsWith("/search")) return 12;
-  if (pathname.startsWith("/paper")) return 60;
+  // BORR expects only a handful of real users. A low limit keeps even a
+  // browser-spoofing crawler far below Turso's free monthly read quota.
+  if (pathname.startsWith("/search")) return 5;
+  if (pathname.startsWith("/paper")) return 20;
   return 30;
+}
+
+function isPrefetch(request: NextRequest): boolean {
+  // Next.js may speculatively request every visible <Link>. On a paper page
+  // that used to fan out into dozens of /search requests (one per author and
+  // field) without a click. Reject all known prefetch forms at the edge before
+  // they can render a route or touch Turso.
+  return (
+    request.headers.get("purpose")?.toLowerCase() === "prefetch" ||
+    request.headers.get("sec-purpose")?.toLowerCase().includes("prefetch") === true ||
+    request.headers.get("next-router-prefetch") === "1" ||
+    request.headers.get("x-middleware-prefetch") === "1"
+  );
 }
 
 function isRateLimited(key: string, limit: number): boolean {
@@ -46,9 +61,20 @@ function plain(status: number, message: string): NextResponse {
   });
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
   const ua = request.headers.get("user-agent") || "";
+
+  if (isPrefetch(request)) {
+    return new NextResponse(null, {
+      status: 204,
+      headers: {
+        "cache-control": "private, no-store",
+        "x-robots-tag": "noindex, nofollow, noarchive",
+        "x-borr-prefetch-blocked": "1",
+      },
+    });
+  }
 
   // Hard block known AI/scraper/crawler traffic before it can invoke SSR/Turso.
   if (!ua || BLOCKED_UA_RE.test(ua)) {

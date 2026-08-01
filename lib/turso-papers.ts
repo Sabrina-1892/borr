@@ -88,14 +88,14 @@ function normalizePaper(row: Row): LocalPaperRow {
     doi: row.doi ? String(row.doi) : null,
     url: row.url ? String(row.url) : null,
     journal: row.journal ? String(row.journal) : null,
-    year: row.year ? Number(row.year) : null,
+    year: row.year == null ? null : Number(row.year),
     institution: parseJsonArray(row.institution),
     fields: parseJsonArray(row.fields),
     paper_type: row.paper_type ? String(row.paper_type) : null,
     access_type: row.access_type ? String(row.access_type) : null,
     source: row.source ? String(row.source) : null,
     verified: Boolean(row.verified),
-    citation_count: row.citation_count ? Number(row.citation_count) : null,
+    citation_count: row.citation_count == null ? null : Number(row.citation_count),
     created_at: String(row.created_at),
   };
 }
@@ -111,14 +111,14 @@ function normalizePaperShort(row: Row): LocalPaperRow {
     doi: row.doi ? String(row.doi) : null,
     url: row.url ? String(row.url) : null,
     journal: row.journal ? String(row.journal) : null,
-    year: row.year ? Number(row.year) : null,
+    year: row.year == null ? null : Number(row.year),
     institution: parseJsonArray(row.institution),
     fields: parseJsonArray(row.fields),
     paper_type: row.paper_type ? String(row.paper_type) : null,
     access_type: row.access_type ? String(row.access_type) : null,
     source: row.source ? String(row.source) : null,
     verified: Boolean(row.verified),
-    citation_count: row.citation_count ? Number(row.citation_count) : null,
+    citation_count: row.citation_count == null ? null : Number(row.citation_count),
     created_at: String(row.created_at),
   };
 }
@@ -154,7 +154,7 @@ async function getTotalPaperCount(): Promise<number> {
     const value = Number(result.rows[0]?.n ?? 0);
     cachedTotalCount = { value, expiresAt: now + TOTAL_COUNT_TTL_MS };
     return value;
-  } catch (e) {
+  } catch {
     // Fallback if table doesn't exist yet
     return 0;
   }
@@ -170,7 +170,10 @@ function checkSchema() {
 }
 
 const MAX_SEARCH_PAGE = 20;
-const MAX_FTS_CANDIDATES = 512;
+// 128 candidates are ample for a 15-result page and put a strict ceiling on
+// the second-stage papers lookup. At two queries per search, even 20 genuine
+// searches per day remain tiny relative to Turso's free monthly allowance.
+const MAX_FTS_CANDIDATES = 128;
 const MAX_QUERY_TERMS = 5;
 const MAX_QUERY_LENGTH = 120;
 const MAX_QUERY_TERM_LENGTH = 48;
@@ -194,9 +197,15 @@ async function searchLocalPapersUncached(options: SearchPapersOptions): Promise<
   const db = getClient();
   const schema = checkSchema();
 
+  // These predicates are non-indexable on the current schema. Never let a
+  // direct caller run them against all papers; FTS must first bound the rowids.
+  if (!options.query && (options.field || options.institution)) {
+    return { papers: [], count: 0, countMode: "lower-bound", hasNextPage: false };
+  }
+
   const params: (string | number)[] = [];
   const where: string[] = ["p.verified = 1"];
-  let ftsCandidateRowids: number[] = [];
+  let ftsCandidateRowids: number[] | null = null;
 
   if (options.query) {
     if (!schema.hasFts) {
@@ -222,7 +231,7 @@ async function searchLocalPapersUncached(options: SearchPapersOptions): Promise<
       .sort((a, b) => (a.rank - b.rank) || (a.rowid - b.rowid))
       .map(({ rowid }) => rowid);
 
-    if (ftsCandidateRowids.length === 0) {
+    if (!ftsCandidateRowids || ftsCandidateRowids.length === 0) {
       return { papers: [], count: 0, countMode: "lower-bound", hasNextPage: false };
     }
 
@@ -285,7 +294,7 @@ async function searchLocalPapersUncached(options: SearchPapersOptions): Promise<
 
   if (options.sort === "newest") {
     orderBy = "p.year DESC, p.id ASC";
-  } else if (options.sort === "relevance" && ftsCandidateRowids.length > 0) {
+  } else if (options.sort === "relevance" && ftsCandidateRowids && ftsCandidateRowids.length > 0) {
     // Relevance ordering is performed only over the bounded candidate set,
     // not over every row matching the FTS expression.
     orderBy = `CASE p.rowid ${ftsCandidateRowids.map((_, index) => `WHEN ? THEN ${index}`).join(" ")} ELSE ${ftsCandidateRowids.length} END`;
@@ -298,9 +307,15 @@ async function searchLocalPapersUncached(options: SearchPapersOptions): Promise<
     p.citation_count, p.created_at
   `;
 
+  // With an IN(rowid...) predicate plus citation sorting, SQLite can choose the
+  // citation index and scan hundreds of thousands of entries before it reaches
+  // the candidate rowids. NOT INDEXED still permits INTEGER PRIMARY KEY rowid
+  // probes and guarantees work proportional to the bounded candidate set.
+  const paperTable = ftsCandidateRowids ? "papers p NOT INDEXED" : "papers p";
+
   const sql = `
     SELECT ${selectColumns}
-    FROM papers p
+    FROM ${paperTable}
     WHERE ${whereSql}
     ORDER BY ${orderBy}
     LIMIT ? OFFSET ?
@@ -351,16 +366,51 @@ async function searchLocalPapersUncached(options: SearchPapersOptions): Promise<
   };
 }
 
-export const searchLocalPapers = unstable_cache(
+const searchLocalPapersCached = unstable_cache(
   searchLocalPapersUncached,
-  ["borr-search-local-papers-v4"],
+  ["borr-search-local-papers-v5"],
   { revalidate: 600 }
 );
+
+const VALID_SORTS = new Set(["relevance", "newest", "cited"]);
+const VALID_TYPES = new Set(["Journal Article", "Review", "Conference", "Preprint", "Thesis", "Book Chapter", "Other"]);
+
+function cleanOption(value: string | undefined, maxLength: number): string {
+  return (value || "").normalize("NFKC").trim().slice(0, maxLength);
+}
+
+function sanitizeSearchOptions(options: SearchPapersOptions): SearchPapersOptions {
+  const query = cleanOption(options.query, MAX_QUERY_LENGTH);
+  const requestedSort = cleanOption(options.sort, 16);
+  const requestedType = cleanOption(options.type, 32);
+  const requestedAccess = cleanOption(options.access, 24);
+  const requestedLimit = Number.isFinite(options.limit) ? Math.trunc(options.limit!) : 15;
+
+  return {
+    query,
+    sort: VALID_SORTS.has(requestedSort) ? requestedSort : (query ? "relevance" : "cited"),
+    page: Math.min(Math.max(Number.isFinite(options.page) ? Math.trunc(options.page) : 1, 1), MAX_SEARCH_PAGE),
+    field: cleanOption(options.field, 80),
+    year: cleanOption(options.year, 4),
+    yearFrom: cleanOption(options.yearFrom, 4),
+    yearTo: cleanOption(options.yearTo, 4),
+    type: VALID_TYPES.has(requestedType) ? requestedType : "",
+    access: requestedAccess === "Open Access" ? requestedAccess : "",
+    institution: cleanOption(options.institution, 100),
+    limit: Math.min(Math.max(requestedLimit, 1), 15),
+  };
+}
+
+// Sanitize before unstable_cache sees the arguments. Otherwise attackers can
+// create unbounded cache keys even though the SQL later truncates the values.
+export async function searchLocalPapers(options: SearchPapersOptions): Promise<SearchPapersResult> {
+  return searchLocalPapersCached(sanitizeSearchOptions(options));
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function getLocalPaperByKeyUncached(key: string): Promise<LocalPaperRow | null> {
-  const decoded = decodeURIComponent(key);
+  const decoded = key;
   const selectColumns = `
     id, openalex_id, title, authors, abstract, doi, url, journal, year,
     institution, fields, paper_type, access_type, source, verified,
@@ -413,7 +463,16 @@ const getLocalPaperByKeyCached = unstable_cache(
   { revalidate: 86400 }
 );
 
-export const getLocalPaperByKey = cache(getLocalPaperByKeyCached);
+export const getLocalPaperByKey = cache(async (key: string): Promise<LocalPaperRow | null> => {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(key).trim();
+  } catch {
+    return null;
+  }
+  if (!decoded || decoded.length > 300) return null;
+  return getLocalPaperByKeyCached(decoded);
+});
 
 export async function getLocalPaperCount(): Promise<number> {
   return await getTotalPaperCount();
@@ -437,7 +496,7 @@ export async function getLocalTypeCounts(): Promise<Record<string, number>> {
     for (const row of result.rows) {
       counts[String(row.paper_type)] = Number(row.n);
     }
-  } catch (e) {
+  } catch {
     // If the table doesn't exist yet, return empty
   }
   
@@ -445,26 +504,10 @@ export async function getLocalTypeCounts(): Promise<Record<string, number>> {
   return counts;
 }
 
-export async function getLocalPaperSitemapPage(
-  offset: number,
-  limit: number,
-): Promise<{ id: string; updated_at: string | null }[]> {
-  const db = getClient();
-  const result = await db.execute({
-    sql: `SELECT id, updated_at FROM papers WHERE verified = 1 ORDER BY citation_count DESC LIMIT ? OFFSET ?`,
-    args: [limit, offset],
-  });
-  
-  return result.rows.map((row) => ({
-    id: String(row.id),
-    updated_at: row.updated_at ? String(row.updated_at) : null,
-  }));
-}
-
 export async function localDoiExists(doi: string): Promise<boolean> {
   const db = getClient();
   const result = await db.execute({
-    sql: `SELECT 1 FROM papers WHERE lower(doi) = lower(?) LIMIT 1`,
+    sql: `SELECT 1 FROM papers WHERE doi IS NOT NULL AND lower(doi) = lower(?) LIMIT 1`,
     args: [doi],
   });
   return result.rows.length > 0;
@@ -552,7 +595,7 @@ export async function getUnverifiedLocalPapers(): Promise<UnverifiedPaper[]> {
 export async function setLocalPaperVerified(id: string): Promise<void> {
   const db = getClient();
   await db.execute({
-    sql: `UPDATE papers SET verified = 1 WHERE id = ?`,
+    sql: `UPDATE papers SET verified = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
     args: [id],
   });
 }

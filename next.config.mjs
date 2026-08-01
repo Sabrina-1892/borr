@@ -46,7 +46,7 @@ const nextConfig = {
       {
         source: "/search",
         headers: [
-          { key: "Cache-Control", value: "public, s-maxage=60, stale-while-revalidate=300" },
+          { key: "Cache-Control", value: "public, s-maxage=600, stale-while-revalidate=86400" },
         ],
       },
     ];

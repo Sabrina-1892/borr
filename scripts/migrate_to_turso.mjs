@@ -2,8 +2,6 @@
 // Usage: TURSO_DATABASE_URL=<turso-url> TURSO_AUTH_TOKEN=<token> node scripts/migrate_to_turso.mjs
 
 import { createClient } from "@libsql/client";
-import { createInterface } from "readline";
-import { readFileSync } from "fs";
 
 const TURSO_URL = process.env.TURSO_DATABASE_URL;
 const TURSO_TOKEN = process.env.TURSO_AUTH_TOKEN;
@@ -74,7 +72,7 @@ async function main() {
     try {
       await remote.batch(batchStatements);
       inserted += batchStatements.length;
-    } catch (e) {
+    } catch {
       for (const stmt of batchStatements) {
         try {
           await remote.execute(stmt);

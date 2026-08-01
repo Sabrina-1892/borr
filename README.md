@@ -6,23 +6,23 @@ BORR is an open-source, metadata-only repository indexing research papers by Ban
 
 ## Features
 - **Centralized Search**: Search by title, author, institution, and keyword across all Bangladeshi research.
-- **Automated Harvester**: Daily indexing from the OpenAlex API to keep the repository up-to-date.
+- **Automated Harvester**: Operator-run indexing from OpenAlex and other scholarly APIs.
 - **Community Submissions**: Researchers can submit their DOIs to have their work indexed.
 - **Open Metadata**: Metadata is free and open to all (CC0).
-- **SEO & Discoverability**: Semantic HTML and Schema.org markup ensures papers rank well on search engines.
+- **Structured Metadata**: Semantic HTML and Schema.org markup on paper records.
 
 ## Tech Stack
-- Next.js 14 (App Router)
+- Next.js 16 (App Router)
 - Tailwind CSS
-- Supabase (PostgreSQL + RLS)
+- Turso/libSQL (SQLite + FTS5)
 - Python (Harvester Script)
 
 ## Local Setup
 
 ### 1. Prerequisites
-- Node.js 18+
+- Node.js 20+
 - Python 3.11+
-- A Supabase Project
+- A Turso database
 
 ### 2. Install Dependencies
 ```bash
@@ -30,22 +30,51 @@ npm install
 ```
 
 ### 3. Environment Variables
-Copy the example file and populate with your Supabase credentials:
+Copy the example file and populate it with your Turso credentials:
 ```bash
 cp .env.example .env.local
 ```
 Add:
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY` (Only needed for the harvester script)
+- `TURSO_DATABASE_URL`
+- `TURSO_AUTH_TOKEN`
+- `BORR_SEARCH_ENABLED=0` (safe default; set to `1` only after the production migration below)
+- `ADMIN_SECRET_KEY`
 
 ### 4. Database Setup
-Run the SQL migration file in your Supabase SQL editor:
-`supabase/migrations/00_init_papers.sql`
+For a fresh database, apply `turso/schema.sql`.
+
+For the existing `borr-v2` production database, keep public search disabled and run:
+
+```bash
+npm run migrate:read-quota
+```
+
+The runner refuses any database URL that does not contain `borr-v2`. The migration adds filter/sort indexes, rebuilds the tiny `paper_stats` aggregate, and prevents non-search updates from rebuilding FTS rows.
 
 ### 5. Run Development Server
 ```bash
 npm run dev
+```
+
+## Turso Read-Quota Safety
+
+BORR is designed for a low-traffic deployment on Turso's free allowance:
+
+- A naked `/search` request never queries the database.
+- Next.js prefetch is disabled on database-backed links; standard browser prefetch requests are rejected by `proxy.ts`.
+- Public search is limited to 5 requests per IP per minute and 20 pages.
+- Each FTS request selects at most 128 candidate rowids before loading/sorting paper rows.
+- Field and affiliation filters require an FTS keyword; they cannot scan the full corpus by themselves.
+- Paper data is cached for one day and search responses for ten minutes.
+- Crawlers and known scraper user agents are blocked from database-backed routes.
+
+Run the regression suite before deployment:
+
+```bash
+npm run lint
+npm run test:read-budget
+BORR_SEARCH_ENABLED=0 npm run build
+npm audit
 ```
 
 ## Contributing

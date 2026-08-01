@@ -8,14 +8,21 @@ import AuthorList from "@/components/AuthorList";
 import AbstractSection from "@/components/AbstractSection";
 import CiteButton from "@/components/CiteButton";
 import CopyDoiButton from "@/components/CopyDoiButton";
+import type { Metadata } from "next";
 
 // ISR instead of force-dynamic: paper pages are immutable enough to cache for an
-// hour. force-dynamic emitted `no-store` and made every crawler hit re-query Turso;
+// day. force-dynamic emitted `no-store` and made every crawler hit re-query Turso;
 // with revalidate the page is served from the Full Route Cache / CDN (matches the
-// s-maxage=3600 header in vercel.json).
-export const revalidate = 3600;
+// s-maxage=86400 header in vercel.json).
+export const revalidate = 86400;
 
-const PAPER_SELECT = "id, title, authors, abstract, doi, url, journal, year, institution, fields, paper_type, access_type, citation_count, verified";
+// Deliberately static: generateMetadata previously loaded the same paper a
+// second time. Cache misses and database errors therefore doubled every paper
+// request. The page itself performs the single required indexed lookup.
+export const metadata: Metadata = {
+  title: "Research Paper | BORR",
+  description: "Research paper record in the Bangladesh Open Research Repository.",
+};
 
 type PaperPageRow = {
   id: string;
@@ -52,18 +59,6 @@ function sanitizeBackQs(back: string | undefined): string {
   } catch {
     return "";
   }
-}
-
-export async function generateMetadata({ params }: { params: Promise<{ doi: string }> }) {
-  const resolvedParams = await params;
-  const paper = await loadPaper(resolvedParams.doi);
-
-  if (!paper) return { title: "Paper Not Found | BORR" };
-
-  return {
-    title: `${paper.title} | BORR`,
-    description: paper.abstract || `Research paper by ${paper.authors?.[0] || "Bangladeshi researchers"} and others.`,
-  };
 }
 
 export default async function PaperPage({
@@ -103,7 +98,7 @@ export default async function PaperPage({
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: escapeJsonForHtml(jsonLd) }} />
 
-      <Link href={backHref} className="inline-flex items-center text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 mb-8 transition-colors">
+      <Link prefetch={false} href={backHref} className="inline-flex items-center text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 mb-8 transition-colors">
         <ArrowLeft className="w-4 h-4 mr-2" /> Back to Search
       </Link>
 
@@ -180,9 +175,9 @@ export default async function PaperPage({
               <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Fields & Keywords</h2>
               <div className="flex flex-wrap gap-2">
                 {paper.fields.map((field: string) => (
-                  <Link key={field} href={`/search?field=${encodeURIComponent(field)}`} className="bg-blue-50 dark:bg-blue-950 text-borr-blue dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900 hover:underline text-xs px-3 py-1.5 rounded-md transition-colors">
+                  <span key={field} className="bg-blue-50 dark:bg-blue-950 text-borr-blue dark:text-blue-300 text-xs px-3 py-1.5 rounded-md">
                     {field}
-                  </Link>
+                  </span>
                 ))}
               </div>
             </div>
