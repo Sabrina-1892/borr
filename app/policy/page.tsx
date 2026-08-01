@@ -15,15 +15,15 @@ export default function PolicyPage() {
         <h1 className="text-4xl font-extrabold text-borr-navy dark:text-blue-300 mb-2">
           Disclaimer, Takedown &amp; Corrections
         </h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-10">Last updated: 13 June 2026.</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-10">Last updated: 1 August 2026.</p>
 
         <div className="prose prose-lg prose-blue max-w-none text-gray-700 dark:text-gray-300">
           <h2 id="disclaimer" className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-0 mb-4 scroll-mt-24">
             Disclaimer
           </h2>
           <p className="mb-8 leading-relaxed">
-            BORR&apos;s metadata is aggregated automatically from public sources such as Crossref, OpenAlex,
-            and community submissions. It is provided <strong>&quot;as is,&quot; without warranty of any
+            BORR&apos;s metadata is aggregated automatically from public internet sources and community
+            submissions. It is provided <strong>&quot;as is,&quot; without warranty of any
             kind</strong>, express or implied. Records may be incomplete, out of date, duplicated, or
             contain errors, and an entry&apos;s presence here does not imply endorsement by, or affiliation
             with, BORR. To the fullest extent permitted by law, BORR and its maintainers are not liable for

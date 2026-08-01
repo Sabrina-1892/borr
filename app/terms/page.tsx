@@ -4,7 +4,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "Terms of Use — BORR",
   description:
-    "BORR is a metadata index and research-discovery service. Full-text rights remain with the original publishers, repositories, and authors.",
+    "BORR is a free metadata index and research-discovery platform. Full-text rights remain with the original publishers, repositories, and authors.",
 };
 
 export default function TermsPage() {
@@ -12,12 +12,12 @@ export default function TermsPage() {
     <div className="max-w-4xl mx-auto px-4 py-12">
       <div className="bg-white dark:bg-gray-900 p-8 md:p-12 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800">
         <h1 className="text-4xl font-extrabold text-borr-navy dark:text-blue-300 mb-2">Terms of Use</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-10">Last updated: 13 June 2026.</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-10">Last updated: 1 August 2026.</p>
 
         <div className="prose prose-lg prose-blue max-w-none text-gray-700 dark:text-gray-300">
           <p className="mb-4 leading-relaxed">
             BORR (Bangladesh Open Research Repository) is a free{" "}
-            <strong>metadata index and research-discovery service</strong>. It helps you <em>find</em>{" "}
+            <strong>metadata index and research-discovery platform</strong>. It helps you <em>find</em>{" "}
             scholarly works by Bangladeshi authors, by Bangladeshi institutions, or about Bangladesh. It is
             a finding tool, not a substitute for the original source.
           </p>
