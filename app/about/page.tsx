@@ -11,6 +11,15 @@ export default function AboutPage() {
             BORR (Bangladesh Open Research Repository) exists to make all research from Bangladesh — and about Bangladesh — discoverable, accessible, and free for anyone in the world to find. We aggregate all research metadata from global publishers into a single, searchable, open platform maintained by and for the people of Bangladesh.
           </p>
 
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-4">
+            A Message from the Founders
+          </h2>
+          <div className="mb-8 rounded-lg border-l-4 border-borr-blue bg-blue-50 p-6 text-gray-700 dark:bg-blue-950/30 dark:text-gray-300">
+            <p className="m-0 leading-relaxed">
+              The Bangladesh Open Research Repository (BORR) is the thoughtful and carefully crafted vision of two brothers, Nehal Hasnain and Rehan Hasnain. We maintain this open research platform for Bangladeshi students, educators, researchers, and academics, with a mission to make Bangladeshi research more visible, accessible, and reachable to scholars around the world. We believe Bangladesh will lead frontier research in science, medicine, and technology, and we stand by our motto: &ldquo;Research for a Better Bangladesh.&rdquo;
+            </p>
+          </div>
+
           <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-8 mb-4">The Problem We Solve</h2>
           <p className="mb-6 leading-relaxed">
             Bangladesh produces thousands of research papers annually across medicine, agriculture, engineering, climate science, and social sciences. Yet they are scattered across hundreds of publisher websites and institutional repositories. BORR acts as the missing &quot;front page&quot; for Bangladeshi science, bringing all this knowledge into one searchable index.
