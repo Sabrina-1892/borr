@@ -51,7 +51,8 @@ export default async function SearchPage({
   let error: { message: string } | null = null;
   const hasAnyFilter = Boolean(filterField || filterYear || filterYearFrom || filterYearTo || filterType || filterAccess || filterInstitution);
   const searchEnabled = process.env.BORR_SEARCH_ENABLED === "1";
-  const canQueryDatabase = searchEnabled && query.length >= 2;
+  // Allow empty queries (for browsing/filtering) or text queries >= 2 characters
+  const canQueryDatabase = searchEnabled && (query === "" || query.length >= 2);
 
   if (isTursoDatabaseConfigured && canQueryDatabase) {
     try {

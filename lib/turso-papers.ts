@@ -160,50 +160,74 @@ async function getTotalPaperCount(): Promise<number> {
   }
 }
 
-let schemaStatus: {
+const schemaStatus: {
   hasFts: boolean;
   hasSearchText: boolean;
 } = { hasFts: true, hasSearchText: false };  // production Turso always has FTS
 
-async function checkSchema(db: Client) {
+function checkSchema() {
   return schemaStatus;  // hardcoded — saves a PRAGMA query on every search
+}
+
+const MAX_SEARCH_PAGE = 20;
+const MAX_FTS_CANDIDATES = 512;
+const MAX_QUERY_TERMS = 5;
+const MAX_QUERY_LENGTH = 120;
+const MAX_QUERY_TERM_LENGTH = 48;
+
+function buildFtsQuery(input: string): string | null {
+  const terms = input
+    .normalize("NFKC")
+    .slice(0, MAX_QUERY_LENGTH)
+    .replace(/["'*]/g, " ")
+    .split(/\s+/)
+    .map((term) => term.slice(0, MAX_QUERY_TERM_LENGTH))
+    .filter((term) => term.length >= 2)
+    .slice(0, MAX_QUERY_TERMS);
+
+  return terms.length > 0
+    ? terms.map((term) => `"${term}"*`).join(" AND ")
+    : null;
 }
 
 async function searchLocalPapersUncached(options: SearchPapersOptions): Promise<SearchPapersResult> {
   const db = getClient();
-  const schema = await checkSchema(db);
+  const schema = checkSchema();
 
   const params: (string | number)[] = [];
   const where: string[] = ["p.verified = 1"];
-  let isFtsUsed = false;
+  let ftsCandidateRowids: number[] = [];
 
   if (options.query) {
-    if (schema.hasFts) {
-      const cleanQuery = options.query
-        .replace(/["'*]/g, "") // Strip characters that might break FTS syntax
-        .split(/\s+/)
-        .filter(Boolean)
-        .map((term) => `"${term}"*`)
-        .join(" AND ");
-
-      if (cleanQuery) {
-        where.push(`f.papers_fts MATCH ?`);
-        params.push(cleanQuery);
-        isFtsUsed = true;
-      }
-    } else {
-      const terms = options.query.split(/\s+/).filter(Boolean);
-      for (const term of terms) {
-        const likeTerm = `%${term}%`;
-        if (schema.hasSearchText) {
-          where.push(`p.search_text LIKE ?`);
-          params.push(likeTerm);
-        } else {
-          where.push(`(p.title LIKE ? OR coalesce(p.abstract, '') LIKE ? OR coalesce(p.authors_text, '') LIKE ?)`);
-          params.push(likeTerm, likeTerm, likeTerm);
-        }
-      }
+    if (!schema.hasFts) {
+      throw new Error("Full-text search is unavailable");
     }
+
+    const ftsQuery = buildFtsQuery(options.query);
+    if (!ftsQuery) {
+      return { papers: [], count: 0, countMode: "lower-bound", hasNextPage: false };
+    }
+
+    // First fetch only a hard-bounded set of FTS rowids. Never join or sort
+    // the complete FTS match set against the 440k-row papers table. Do not add
+    // ORDER BY rank here: SQLite must rank the entire match set before LIMIT.
+    const ftsResult = await db.execute({
+      sql: `SELECT rowid, rank FROM papers_fts WHERE papers_fts MATCH ? LIMIT ?`,
+      args: [ftsQuery, MAX_FTS_CANDIDATES],
+    });
+    ftsCandidateRowids = ftsResult.rows
+      .map((row) => ({ rowid: Number(row.rowid), rank: Number(row.rank) }))
+      .filter(({ rowid }) => Number.isSafeInteger(rowid) && rowid > 0)
+      // Rank only the bounded batch in application memory.
+      .sort((a, b) => (a.rank - b.rank) || (a.rowid - b.rowid))
+      .map(({ rowid }) => rowid);
+
+    if (ftsCandidateRowids.length === 0) {
+      return { papers: [], count: 0, countMode: "lower-bound", hasNextPage: false };
+    }
+
+    params.push(...ftsCandidateRowids);
+    where.push(`p.rowid IN (${ftsCandidateRowids.map(() => "?").join(",")})`);
   }
 
   if (options.field) {
@@ -252,17 +276,20 @@ async function searchLocalPapersUncached(options: SearchPapersOptions): Promise<
   }
 
   const whereSql = where.join(" AND ");
-  const limit = options.limit ?? 20;
-  const offset = (Math.max(options.page, 1) - 1) * limit;
+  const limit = Math.min(Math.max(options.limit ?? 20, 1), 15);
+  const page = Math.min(Math.max(options.page, 1), MAX_SEARCH_PAGE);
+  const offset = (page - 1) * limit;
   const fetchLimit = limit + 1;
 
-  let orderBy = "p.citation_count DESC";
+  let orderBy = "p.citation_count DESC, p.id ASC";
 
   if (options.sort === "newest") {
-    orderBy = "p.year DESC";
-  } else if (options.sort === "relevance" && options.query) {
-    orderBy = "CASE WHEN p.title LIKE ? THEN 100 ELSE 0 END + p.citation_count DESC, p.year DESC";
-    params.push(`%${options.query}%`);
+    orderBy = "p.year DESC, p.id ASC";
+  } else if (options.sort === "relevance" && ftsCandidateRowids.length > 0) {
+    // Relevance ordering is performed only over the bounded candidate set,
+    // not over every row matching the FTS expression.
+    orderBy = `CASE p.rowid ${ftsCandidateRowids.map((_, index) => `WHEN ? THEN ${index}`).join(" ")} ELSE ${ftsCandidateRowids.length} END`;
+    params.push(...ftsCandidateRowids);
   }
 
   const selectColumns = `
@@ -271,22 +298,13 @@ async function searchLocalPapersUncached(options: SearchPapersOptions): Promise<
     p.citation_count, p.created_at
   `;
 
-  const sql = isFtsUsed
-    ? `
-      SELECT ${selectColumns}
-      FROM papers_fts f
-      CROSS JOIN papers p ON p.rowid = f.rowid
-      WHERE ${whereSql}
-      ORDER BY ${orderBy}
-      LIMIT ? OFFSET ?
-    `
-    : `
-      SELECT ${selectColumns}
-      FROM papers p
-      WHERE ${whereSql}
-      ORDER BY ${orderBy}
-      LIMIT ? OFFSET ?
-    `;
+  const sql = `
+    SELECT ${selectColumns}
+    FROM papers p
+    WHERE ${whereSql}
+    ORDER BY ${orderBy}
+    LIMIT ? OFFSET ?
+  `;
 
   params.push(fetchLimit, offset);
 
@@ -321,7 +339,7 @@ async function searchLocalPapersUncached(options: SearchPapersOptions): Promise<
       count = exact;
       countMode = "exact";
     }
-  } else if (!hasNextPage) {
+  } else if (!options.query && !hasNextPage) {
     countMode = "exact";
   }
 
